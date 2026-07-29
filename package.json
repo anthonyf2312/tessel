@@ -12,7 +12,8 @@
     "sign": "npm run sign -w @tessel/bot --",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "review": "npm run review -w @tessel/bot --"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
