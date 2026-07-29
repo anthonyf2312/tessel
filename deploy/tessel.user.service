@@ -18,6 +18,11 @@ Documentation=https://github.com/anthonyf2312/tessel
 After=network-online.target
 Wants=network-online.target
 
+# Give up if it cannot stay up — a crash loop should be visible, not retried forever.
+# These belong in [Unit]; systemd ignores them under [Service].
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
 [Service]
 Type=simple
 WorkingDirectory=%h/tessel
@@ -31,8 +36,6 @@ ExecStart=%h/.local/node/bin/npm start
 
 Restart=on-failure
 RestartSec=10s
-StartLimitBurst=5
-StartLimitIntervalSec=300
 
 StandardOutput=journal
 StandardError=journal
