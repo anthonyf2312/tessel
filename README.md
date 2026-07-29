@@ -6,7 +6,7 @@
 
 You install the ones you want, one server at a time.
 
-[![tests](https://img.shields.io/badge/tests-225%20passing-ff6b2b?style=flat-square)](#verification)
+[![tests](https://img.shields.io/badge/tests-227%20passing-ff6b2b?style=flat-square)](#verification)
 [![node](https://img.shields.io/badge/node-%E2%89%A524-ff6b2b?style=flat-square)](#requirements)
 [![typescript](https://img.shields.io/badge/typescript-strict-ff6b2b?style=flat-square)](#)
 [![sandbox](https://img.shields.io/badge/modules-sandboxed-ff6b2b?style=flat-square)](#security)
@@ -201,7 +201,7 @@ apps/bot/                  core: the only process that holds the token
 
 ## Verification
 
-**225 tests.** The ones that matter most spawn real sandboxed processes and run real attacks:
+**227 tests.** The ones that matter most spawn real sandboxed processes and run real attacks:
 reading a planted secret, reading a database file, writing files, `child_process`,
 `worker_threads`, importing `node:net`, reaching `fetch`, reading `DISCORD_TOKEN`, touching raw
 IPC, re-patching frozen intrinsics. Every one asserts the escape *failed*.

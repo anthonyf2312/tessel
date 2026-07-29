@@ -7,6 +7,7 @@
  * every installer must produce byte-identical output for identical source.
  */
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +26,9 @@ const DENIED_BUILTINS = new Set([
 ]);
 
 export const SDK_SPECIFIER = '@tessel/sdk';
+
+/** Virtual namespace, so the SDK's real path never appears in the output. */
+const SDK_NAMESPACE = 'tessel-sdk';
 
 /** Resolved from this repository so every module bundles the same, reviewed SDK. */
 const DEFAULT_SDK_ENTRY = fileURLToPath(new URL('../../sdk/src/index.ts', import.meta.url));
@@ -62,8 +66,14 @@ function policyPlugin(moduleRoot: string, sdkEntry: string): Plugin {
       pluginBuild.onResolve({ filter: /.*/ }, (args) => {
         // The SDK is the one thing a module may import from outside itself. It is bundled in
         // from this repository's copy, so a module cannot ship a doctored version of it.
+        //
+        // Resolved into a virtual namespace rather than to its real path: esbuild writes each
+        // input's path into the output as a comment, so a real path would embed wherever the
+        // bot happens to be installed. That made the bundle hash machine-dependent — and the
+        // hash is exactly what signatures bind to, so a module signed on one machine would
+        // never verify on another. See the reproducibility tests.
         if (args.path === SDK_SPECIFIER) {
-          return { path: sdkEntry };
+          return { path: SDK_SPECIFIER, namespace: SDK_NAMESPACE };
         }
 
         if (isBuiltin(args.path)) {
@@ -113,6 +123,13 @@ function policyPlugin(moduleRoot: string, sdkEntry: string): Plugin {
 
         return null;
       });
+
+      pluginBuild.onLoad({ filter: /.*/, namespace: SDK_NAMESPACE }, async () => ({
+        contents: await readFile(sdkEntry, 'utf8'),
+        loader: 'ts',
+        // No resolveDir: the SDK imports nothing, and omitting it means a doctored module
+        // cannot cause a relative import to be resolved from the SDK's directory.
+      }));
     },
   };
 }

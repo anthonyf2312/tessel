@@ -6,7 +6,8 @@
  * for identical source.
  */
 import { afterAll, describe, expect, test } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { bundleModule } from './bundle.ts';
@@ -152,5 +153,45 @@ describe('broken source', () => {
     const result = await bundleModule(root, 'src/does-not-exist.ts');
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('path independence', () => {
+  // The bundle hash is what signatures bind to. esbuild writes each input's path into the
+  // output as a comment, so if the SDK resolved to a real path the hash would depend on where
+  // the bot happens to be installed — a module signed on one machine would never verify on
+  // another, and every module would silently read as unsigned. This is the regression guard.
+  test('the same source hashes identically regardless of where the SDK lives', async () => {
+    const root = await makeModule({
+      'src/index.ts':
+        "import { defineModule } from '@tessel/sdk';\nexport default defineModule({ commands: {} });",
+    });
+
+    const fromRepo = await bundleModule(root, 'src/index.ts');
+
+    const altDir = await mkdtemp(join(tmpdir(), 'tessel-alt-sdk-'));
+    tempDirs.push(altDir);
+    await cp(fileURLToPath(new URL('../../sdk/src', import.meta.url)), join(altDir, 'src'), {
+      recursive: true,
+    });
+    const fromElsewhere = await bundleModule(root, 'src/index.ts', {
+      sdkEntry: join(altDir, 'src', 'index.ts'),
+    });
+
+    expect(fromRepo.ok && fromElsewhere.ok && fromRepo.sha256).toBe(
+      fromElsewhere.ok ? fromElsewhere.sha256 : 'mismatch',
+    );
+  });
+
+  test('the bundle contains no absolute filesystem path', async () => {
+    const root = await makeModule({
+      'src/index.ts':
+        "import { defineModule } from '@tessel/sdk';\nexport default defineModule({ commands: {} });",
+    });
+
+    const bundle = await bundleModule(root, 'src/index.ts');
+
+    const absolutePath = /[A-Za-z]:\\|\/home\/|\/Users\//;
+    expect(bundle.ok && absolutePath.test(bundle.code)).toBe(false);
   });
 });
