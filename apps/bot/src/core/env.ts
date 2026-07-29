@@ -5,8 +5,21 @@
  * confusing runtime failure. The token lives here and nowhere else — it is never passed to a
  * module process, which is spawned with an empty environment.
  */
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+
+/**
+ * Load .env from the repository root, not the working directory.
+ *
+ * `npm run dev` runs the bot with cwd set to apps/bot, so the bare `dotenv/config` import
+ * looked for apps/bot/.env and silently found nothing — which surfaced as "DISCORD_TOKEN:
+ * Required" even though the file was sitting right there in the root.
+ *
+ * Real environment variables still win: dotenv does not overwrite what is already set, so
+ * systemd `Environment=` or a container's env take precedence over the file.
+ */
+loadDotenv({ path: fileURLToPath(new URL('../../../../.env', import.meta.url)) });
 
 const schema = z.object({
   DISCORD_TOKEN: z.string().min(1, 'DISCORD_TOKEN is required — get it from the Developer Portal'),
