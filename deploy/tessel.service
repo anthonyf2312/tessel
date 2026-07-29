@@ -1,0 +1,64 @@
+# Tessel — systemd unit
+#
+# Install:
+#   sudo cp deploy/tessel.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tessel
+#
+# Adjust User, WorkingDirectory and the npm path to match your server.
+
+[Unit]
+Description=Tessel — modular Discord bot
+Documentation=https://github.com/anthonyf2312/tessel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tessel
+Group=tessel
+WorkingDirectory=/opt/tessel
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+
+Restart=on-failure
+RestartSec=10s
+# Give up if it cannot stay up — a crash loop should be visible, not silently retried forever.
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# Logs go to the journal: journalctl -u tessel -f
+StandardOutput=journal
+StandardError=journal
+
+# --- hardening -------------------------------------------------------------
+# Tessel already sandboxes module code in child processes. This is defence in depth for the
+# core process itself, which does hold the token.
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+
+# The only path the bot may write: its database and the module bundles it extracts.
+ReadWritePaths=/opt/tessel/data
+
+# Outbound only — Discord's gateway and GitHub. The bot listens on no ports.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# IMPORTANT: do NOT add MemoryDenyWriteExecute=true. V8 needs writable-executable pages for
+# JIT, and Node will fail to start. Likewise leave SystemCallFilter alone unless you have
+# tested it — Node's permission model and process spawning need a broad syscall surface.
+
+[Install]
+WantedBy=multi-user.target

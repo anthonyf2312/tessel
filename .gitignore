@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Secrets. Nothing in this block may ever reach the repository.
+# ---------------------------------------------------------------------------
+
+# The bot token lives here.
+.env
+.env.*
+!.env.example
+
+# The catalogue signing key. If this leaks, anyone can mark any module as reviewed.
+signing/
+*.key
+*.pem
+
+# ---------------------------------------------------------------------------
+# Generated
+# ---------------------------------------------------------------------------
+
+node_modules/
+
+# SQLite database, WAL files, and the extracted bundles of installed modules —
+# third-party code that does not belong in this repository's history.
+data/
+
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Local noise
+# ---------------------------------------------------------------------------
+
+*.log
+npm-debug.log*
+.playwright-mcp/
+.DS_Store
+Thumbs.db
+desktop.ini
