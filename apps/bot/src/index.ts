@@ -18,6 +18,7 @@ import { env } from './core/env.ts';
 import { logger } from './core/logger.ts';
 import { deployGuildCommands } from './core/deploy.ts';
 import { getCatalogue } from './core/catalogue.ts';
+import { createDiscordActions } from './core/discord-actions.ts';
 import { handleModuleButton, handleModuleCommand } from './commands/module.ts';
 import { errorPanel, reply } from './core/ui.ts';
 
@@ -26,17 +27,39 @@ const moduleDir = join(dataDir, 'modules');
 
 await mkdir(moduleDir, { recursive: true });
 
+/**
+ * Intents start minimal — `Guilds` is all core needs for interactions — and widen only when
+ * an operator opts in, because Discord refuses the login entirely if a privileged intent is
+ * requested but not enabled in the Developer Portal.
+ *
+ * Modules never widen this. A module declaring `messages.read` gets nothing unless the bot
+ * was started with the intent that makes those events exist at all.
+ */
+function intentsFromConfig(): GatewayIntentBits[] {
+  const intents = [GatewayIntentBits.Guilds];
+
+  if (env.PRIVILEGED_INTENTS.includes('members')) {
+    intents.push(GatewayIntentBits.GuildMembers);
+  }
+
+  if (env.PRIVILEGED_INTENTS.includes('messageContent')) {
+    intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
+  }
+
+  return intents;
+}
+
+const client = new Client({ intents: intentsFromConfig() });
+
 const store = new TesselStore(join(dataDir, 'tessel.db'));
 const supervisor = new Supervisor();
-const manager = new ModuleManager({ store, supervisor, bundleDir: moduleDir });
+const manager = new ModuleManager({
+  store,
+  supervisor,
+  bundleDir: moduleDir,
+  discord: createDiscordActions(client),
+});
 const deps = { manager, store, moduleDir };
-
-/**
- * Intents are deliberately minimal: `Guilds` is all core needs to receive interactions. A
- * module wanting message content does not widen this — it goes through the SDK, which core
- * serves from what it already has. Widening intents is a core change, reviewed as one.
- */
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 supervisor.onAutoDisabled((moduleId, reason) => {
   logger.error({ moduleId, reason }, 'Module auto-disabled after repeated failures.');
@@ -76,6 +99,61 @@ client.on(Events.GuildCreate, async (guild) => {
   await deployGuildCommands(manager, guild.id);
 });
 
+/**
+ * Guild events, fanned out to the modules entitled to see them.
+ *
+ * `dispatchEvent` decides entitlement: enabled in this guild, and holding the permission that
+ * event requires. Core does no filtering of its own beyond ignoring its own messages — a
+ * module without `messages.read` is never sent a message event at all.
+ */
+client.on(Events.GuildMemberAdd, (member) => {
+  manager.dispatchEvent(member.guild.id, 'memberJoin', {
+    member: {
+      id: member.id,
+      username: member.user.username,
+      displayName: member.displayName,
+      bot: member.user.bot,
+      createdAt: member.user.createdTimestamp,
+    },
+    memberCount: member.guild.memberCount,
+  }, member.guild.name);
+});
+
+client.on(Events.GuildMemberRemove, (member) => {
+  manager.dispatchEvent(member.guild.id, 'memberLeave', {
+    member: {
+      id: member.id,
+      username: member.user.username,
+      displayName: member.displayName ?? member.user.username,
+      bot: member.user.bot,
+      createdAt: member.user.createdTimestamp,
+    },
+    memberCount: member.guild.memberCount,
+  }, member.guild.name);
+});
+
+client.on(Events.MessageCreate, (message) => {
+  if (!message.inGuild()) return;
+  // Never hand a module the bot's own output — a moderation module reacting to its own alerts
+  // is an obvious way to build an infinite loop.
+  if (message.author.id === client.user?.id) return;
+
+  manager.dispatchEvent(message.guild.id, 'messageCreate', {
+    message: {
+      id: message.id,
+      channelId: message.channelId,
+      content: message.content,
+      author: {
+        id: message.author.id,
+        username: message.author.username,
+        displayName: message.member?.displayName ?? message.author.username,
+        bot: message.author.bot,
+        createdAt: message.author.createdTimestamp,
+      },
+    },
+  }, message.guild.name);
+});
+
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   try {
     if (interaction.isButton() && interaction.customId.startsWith('mod:')) {
@@ -103,6 +181,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     const result = await manager.dispatchCommand({
       guildId: interaction.guildId,
+      guildName: interaction.guild?.name ?? '',
       command: interaction.commandName,
       userId: interaction.user.id,
       options,

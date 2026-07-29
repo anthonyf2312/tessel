@@ -51,6 +51,21 @@ const schema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
 
+  /**
+   * Privileged intents to request, comma-separated: `members`, `messageContent`.
+   *
+   * Empty by default, and deliberately opt-in: Discord refuses the login outright if you
+   * request a privileged intent that is not enabled in the Developer Portal, so defaulting
+   * these on would mean a bot that cannot start.
+   *
+   *   members        — needed for member join/leave events (welcome modules)
+   *   messageContent — needed for modules that read message text (moderation)
+   */
+  PRIVILEGED_INTENTS: z
+    .string()
+    .default('')
+    .transform((value) => value.split(',').map((item) => item.trim()).filter(Boolean)),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   NODE_ENV: z.enum(['development', 'production']).default('development'),
 });

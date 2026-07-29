@@ -166,6 +166,68 @@ async greet(ctx) {
 }
 ```
 
+### Actions
+
+Everything a module can *do* is on `ctx`, and each needs the matching permission. Every one is
+scoped to the server the command or event came from — you never pass a guild id, and you cannot
+reach a server you were not invoked from.
+
+| Action | Needs |
+|---|---|
+| `ctx.sendMessage(channelId, text)` | `messages.send` |
+| `ctx.deleteMessage(channelId, messageId)` | `messages.manage` |
+| `ctx.timeoutMember(userId, ms, reason?)` | `members.moderate` |
+| `ctx.kickMember(userId, reason?)` | `members.moderate` |
+| `ctx.banMember(userId, reason?)` | `members.ban` |
+| `ctx.addRole(userId, roleId)` / `ctx.removeRole(...)` | `members.roles` |
+| `ctx.storage.get/set/delete(key)` | `storage` |
+
+Actions reject rather than throw silently, so `try`/`catch` gives you something worth showing:
+
+```ts
+try {
+  await ctx.sendMessage(channelId, 'hello');
+} catch (error) {
+  ctx.reply(`I could not post there: ${(error as Error).message}`);
+}
+```
+
+Text you send may mention users — a welcome message pinging the person who joined is the point
+— but role and `@everyone` mentions are stripped by the bot. A module cannot ping a server.
+
+### Events
+
+Events arrive without anyone running a command. Declare handlers under `events`:
+
+```ts
+export default defineModule({
+  events: {
+    async memberJoin(ctx) {
+      const channel = await ctx.storage.get('welcomeChannel');
+      if (channel) await ctx.sendMessage(channel, `Welcome ${ctx.member.username}!`);
+    },
+  },
+});
+```
+
+| Event | Context | Needs |
+|---|---|---|
+| `memberJoin` | `ctx.member`, `ctx.memberCount` | `events.guild` |
+| `memberLeave` | `ctx.member`, `ctx.memberCount` | `events.guild` |
+| `messageCreate` | `ctx.message` | `messages.read` |
+
+Every event context also carries `ctx.guildId`, `ctx.guildName` and the full action set.
+
+If you lack the permission an event requires, you are **not sent it** — you do not receive it
+and discard it. And nobody is waiting on an event, so a handler that throws has nowhere to
+report; the error is swallowed rather than killing the process for every server. Crash
+repeatedly and the supervisor disables you.
+
+> **Events need privileged intents.** `memberJoin`/`memberLeave` require the operator to run
+> the bot with `PRIVILEGED_INTENTS=members`, and `messageCreate` requires `messageContent` —
+> both also enabled in the Discord Developer Portal. Say so in your README, or people will
+> install your module and wonder why nothing happens.
+
 ---
 
 ## 4. Permissions
