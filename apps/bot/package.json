@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --disable-warning=ExperimentalWarning src/index.ts",
-    "start": "cross-env NODE_ENV=production tsx --disable-warning=ExperimentalWarning src/index.ts",
+    "start": "tsx --disable-warning=ExperimentalWarning src/index.ts",
     "sign": "tsx --disable-warning=ExperimentalWarning scripts/sign.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -22,7 +22,6 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
     "pino-pretty": "^13.0.0"
   }
 }

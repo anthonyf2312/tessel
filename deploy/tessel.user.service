@@ -1,0 +1,48 @@
+# Tessel — systemd *user* unit.
+#
+# Use this when you don't have root on the box. It runs as your own user, needs no sudo, and
+# starts at boot once lingering is enabled:
+#
+#   loginctl enable-linger $USER
+#   mkdir -p ~/.config/systemd/user
+#   cp ~/tessel/deploy/tessel.user.service ~/.config/systemd/user/tessel.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now tessel
+#   journalctl --user -u tessel -f
+#
+# For a root install with stronger isolation, use tessel.service instead.
+
+[Unit]
+Description=Tessel — modular Discord bot
+Documentation=https://github.com/anthonyf2312/tessel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/tessel
+
+# Node is installed under the home directory, so systemd needs the explicit path — a user
+# unit does not read ~/.profile.
+Environment=PATH=%h/.local/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+
+ExecStart=%h/.local/node/bin/npm start
+
+Restart=on-failure
+RestartSec=10s
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+StandardOutput=journal
+StandardError=journal
+
+# A user unit cannot use the full sandboxing a system unit can, but these still apply.
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Do NOT add MemoryDenyWriteExecute=true — V8 needs writable-executable pages for JIT and
+# Node will refuse to start.
+
+[Install]
+WantedBy=default.target

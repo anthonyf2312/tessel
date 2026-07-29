@@ -9,6 +9,9 @@ work. If Tailscale is down, the bot keeps running; you just can't reach the serv
 
 ---
 
+> **No root on the box?** Skip to [Running without root](#running-without-root) — Tessel does
+> not need it. That is how the reference deployment runs.
+
 ## 1. Prepare the server
 
 Node 24 or newer is required. The sandbox depends on `--permission` and `module.registerHooks`,
@@ -109,6 +112,55 @@ API; `journalctl` and `systemctl` are the whole admin surface.
 
 ---
 
+## Running without root
+
+Nothing about Tessel requires root. Node installs under your home directory, and systemd's
+per-user manager runs the service. This is how the reference deployment runs.
+
+**Node 24, no package manager needed:**
+
+```sh
+VER=$(curl -sS https://nodejs.org/dist/index.json \
+  | grep -oE '"version":"v24\.[0-9]+\.[0-9]+"' | head -1 | cut -d'"' -f4)
+curl -sSLO "https://nodejs.org/dist/$VER/node-$VER-linux-x64.tar.xz"
+mkdir -p ~/.local
+tar -xJf "node-$VER-linux-x64.tar.xz"
+mv "node-$VER-linux-x64" ~/.local/node
+echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.profile
+export PATH=$HOME/.local/node/bin:$PATH
+node --version
+```
+
+**Tessel:**
+
+```sh
+git clone https://github.com/anthonyf2312/tessel.git ~/tessel
+cd ~/tessel
+npm install --omit=dev
+cp .env.example .env && chmod 600 .env    # then fill it in
+```
+
+**Run it, and keep it running at boot:**
+
+```sh
+loginctl enable-linger $USER
+mkdir -p ~/.config/systemd/user
+cp ~/tessel/deploy/tessel.user.service ~/.config/systemd/user/tessel.service
+systemctl --user daemon-reload
+systemctl --user enable --now tessel
+journalctl --user -u tessel -f
+```
+
+`enable-linger` is the part people miss. Without it the user manager shuts down when your SSH
+session ends, taking the bot with it.
+
+Updating is the same as the root install, without the `sudo`:
+
+```sh
+cd ~/tessel && git pull && npm install --omit=dev
+systemctl --user restart tessel
+```
+
 ## Updating
 
 **Only core changes need a restart.** Installing, enabling, updating and removing *modules* all
@@ -118,7 +170,7 @@ happen live — that is the point of the architecture. Restart only when you pul
 cd /opt/tessel
 sudo -u tessel git pull
 sudo -u tessel npm install --omit=dev
-sudo systemctl restart tessel
+sudo systemctl restart tessel      # or: systemctl --user restart tessel
 ```
 
 Enabled modules are restored automatically on boot, so a restart does not lose state.
