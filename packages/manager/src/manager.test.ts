@@ -47,7 +47,7 @@ const MANIFEST = {
   entry: 'src/index.ts',
   permissions: ['messages.send'],
   network: [],
-  commands: [{ name: 'greet', description: 'Say hello', options: [] }],
+  commands: [{ name: 'greet', description: 'Say hello', options: [], restrictTo: 'everyone' as const }],
   storage: { quotaKb: 512 },
 };
 

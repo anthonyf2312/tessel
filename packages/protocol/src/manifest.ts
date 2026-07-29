@@ -54,10 +54,23 @@ const commandOption = z.object({
   required: z.boolean().default(false),
 });
 
+/**
+ * Who may use a command.
+ *
+ * Declared per command because a module that manages warnings or channels should not be
+ * callable by everyone, and the author is the one who knows which is which. Enforced twice:
+ * registered with Discord as `defaultMemberPermissions` (which server admins can override, so
+ * it is UX), and re-checked at dispatch time by core (which is the actual enforcement).
+ */
+const commandAccess = z
+  .enum(['everyone', 'manage_messages', 'moderate_members', 'manage_channels', 'manage_guild', 'administrator'])
+  .default('everyone');
+
 const command = z.object({
   name: z.string().regex(COMMAND_NAME, 'must be lowercase letters, numbers, hyphens or underscores'),
   description: z.string().min(1).max(100),
   options: z.array(commandOption).max(25).default([]),
+  restrictTo: commandAccess,
 });
 
 const permissionId = z.string().superRefine((value, ctx) => {

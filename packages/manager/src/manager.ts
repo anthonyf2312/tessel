@@ -57,6 +57,8 @@ export interface CommandDeclaration {
   name: string;
   description: string;
   moduleId: string;
+  /** Who may run it. Enforced by core at dispatch, not just registered with Discord. */
+  restrictTo: string;
 }
 
 export interface DispatchInput {
@@ -182,6 +184,7 @@ export class ModuleManager {
           name: command.name,
           description: command.description,
           moduleId: guildModule.moduleId,
+          restrictTo: command.restrictTo,
         });
       }
     }

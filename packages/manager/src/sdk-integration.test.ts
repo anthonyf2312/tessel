@@ -49,8 +49,8 @@ function manifestFor(permissions: string[]) {
     permissions,
     network: [],
     commands: [
-      { name: 'count', description: 'Increment the counter', options: [] },
-      { name: 'peek', description: 'Read the counter', options: [] },
+      { name: 'count', description: 'Increment the counter', options: [], restrictTo: 'everyone' as const },
+      { name: 'peek', description: 'Read the counter', options: [], restrictTo: 'everyone' as const },
     ],
     storage: { quotaKb: 512 },
   };

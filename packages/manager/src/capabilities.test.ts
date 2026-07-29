@@ -83,9 +83,9 @@ function manifestFor(permissions: string[]) {
     permissions,
     network: [],
     commands: [
-      { name: 'announce', description: 'Send a message', options: [] },
-      { name: 'punish', description: 'Time someone out', options: [] },
-      { name: 'nuke', description: 'Ban someone', options: [] },
+      { name: 'announce', description: 'Send a message', options: [], restrictTo: 'everyone' as const },
+      { name: 'punish', description: 'Time someone out', options: [], restrictTo: 'everyone' as const },
+      { name: 'nuke', description: 'Ban someone', options: [], restrictTo: 'everyone' as const },
     ],
     storage: { quotaKb: 512 },
   };

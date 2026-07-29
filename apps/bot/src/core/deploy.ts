@@ -6,13 +6,34 @@
  * other servers it exists. And registration happens on demand over REST, so enabling a module
  * publishes its commands without the bot restarting or re-registering globally.
  */
-import { REST, Routes, SlashCommandBuilder, type APIApplicationCommand } from 'discord.js';
+import {
+  PermissionFlagsBits,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  type APIApplicationCommand,
+} from 'discord.js';
 import type { ModuleManager } from '@tessel/manager';
 import { env } from './env.ts';
 import { logger } from './logger.ts';
 import { moduleCommand } from '../commands/module.ts';
 
 const rest = new REST({ version: '10' }).setToken(env.DISCORD_TOKEN);
+
+/**
+ * A module's declared access level, as a Discord permission bit.
+ *
+ * Registering this is UX only — a server admin can override command permissions in Discord's
+ * settings — which is exactly why the dispatcher re-checks it at call time.
+ */
+export const ACCESS_BITS: Record<string, bigint | null> = {
+  everyone: null,
+  manage_messages: PermissionFlagsBits.ManageMessages,
+  moderate_members: PermissionFlagsBits.ModerateMembers,
+  manage_channels: PermissionFlagsBits.ManageChannels,
+  manage_guild: PermissionFlagsBits.ManageGuild,
+  administrator: PermissionFlagsBits.Administrator,
+};
 
 /**
  * Publishes the command list for one guild: `/module` plus whatever that guild has enabled.
@@ -39,12 +60,14 @@ export async function deployGuildCommands(
     }
     seen.add(declaration.name);
 
-    commands.push(
-      new SlashCommandBuilder()
-        .setName(declaration.name)
-        .setDescription(declaration.description)
-        .toJSON(),
-    );
+    const builder = new SlashCommandBuilder()
+      .setName(declaration.name)
+      .setDescription(declaration.description);
+
+    const required = ACCESS_BITS[declaration.restrictTo] ?? null;
+    if (required !== null) builder.setDefaultMemberPermissions(required);
+
+    commands.push(builder.toJSON());
   }
 
   try {

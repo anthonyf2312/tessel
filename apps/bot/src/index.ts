@@ -10,13 +10,13 @@
  */
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { Client, Events, GatewayIntentBits, type Interaction } from 'discord.js';
+import { Client, Events, GatewayIntentBits, MessageFlags, type Interaction } from 'discord.js';
 import { TesselStore } from '@tessel/db';
 import { Supervisor } from '@tessel/sandbox-runtime';
 import { ModuleManager } from '@tessel/manager';
 import { env } from './core/env.ts';
 import { logger } from './core/logger.ts';
-import { deployGuildCommands } from './core/deploy.ts';
+import { ACCESS_BITS, deployGuildCommands } from './core/deploy.ts';
 import { getCatalogue } from './core/catalogue.ts';
 import { createDiscordActions } from './core/discord-actions.ts';
 import { handleModuleButton, handleModuleCommand } from './commands/module.ts';
@@ -216,6 +216,34 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     // Anything else belongs to a module. The registry decides which one — and refuses if this
     // server has not enabled it, so a command in one server is unreachable from another.
+
+    // Discord's defaultMemberPermissions is UX: a server admin can override it in settings,
+    // so a module command that manages warnings or channels must be re-checked here. Without
+    // this, any member could run a module's admin commands.
+    const declaration = manager
+      .commandsForGuild(interaction.guildId)
+      .find((command) => command.name === interaction.commandName);
+
+    const required = declaration ? (ACCESS_BITS[declaration.restrictTo] ?? null) : null;
+    if (required !== null) {
+      const permissions = interaction.memberPermissions;
+      if (!permissions?.has(required)) {
+        store.audit({
+          guildId: interaction.guildId,
+          moduleId: declaration!.moduleId,
+          op: `command.${interaction.commandName}`,
+          outcome: 'denied',
+          actorUserId: interaction.user.id,
+        });
+
+        await interaction.reply({
+          content: 'You do not have permission to use that command in this server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
+
     await interaction.deferReply();
 
     const options: Record<string, string | number | boolean> = {};
