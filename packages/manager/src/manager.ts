@@ -423,16 +423,49 @@ export class ModuleManager {
         return null;
     }
 
+    if (op === 'http.fetch') {
+      return this.#brokeredFetch(guildId, moduleId, message);
+    }
+
     const discord = this.#discord;
     if (!discord) throw new Error('This bot cannot perform Discord actions right now.');
 
+    // Results are returned as JSON strings: the SDK parses them back. Keeping one shape means
+    // there is exactly one place where data crosses the boundary.
+    const json = (value: unknown) => JSON.stringify(value);
+
     switch (op) {
       case 'message.send':
-        await discord.sendMessage(guildId, str('channelId'), str('content'));
+        return json({ id: await discord.sendMessage(guildId, str('channelId'), str('content')) });
+      case 'message.edit':
+        await discord.editMessage(guildId, str('channelId'), str('messageId'), str('content'));
         return null;
+      case 'message.reply':
+        return json({
+          id: await discord.replyToMessage(guildId, str('channelId'), str('messageId'), str('content')),
+        });
       case 'message.delete':
         await discord.deleteMessage(guildId, str('channelId'), str('messageId'));
         return null;
+      case 'message.pin':
+        await discord.pinMessage(guildId, str('channelId'), str('messageId'), Boolean(message.pinned));
+        return null;
+      case 'message.fetch':
+        return json(await discord.fetchMessage(guildId, str('channelId'), str('messageId')));
+      case 'message.fetchMany':
+        return json(
+          await discord.fetchMessages(guildId, str('channelId'), Number(message.limit ?? 50)),
+        );
+
+      case 'reaction.add':
+        await discord.addReaction(guildId, str('channelId'), str('messageId'), str('emoji'));
+        return null;
+      case 'reaction.remove':
+        await discord.removeReaction(guildId, str('channelId'), str('messageId'), str('emoji'));
+        return null;
+
+      case 'member.fetch':
+        return json(await discord.fetchMember(guildId, str('userId')));
       case 'member.timeout':
         await discord.timeoutMember(guildId, str('userId'), Number(message.durationMs ?? 0), str('reason'));
         return null;
@@ -442,15 +475,105 @@ export class ModuleManager {
       case 'member.ban':
         await discord.banMember(guildId, str('userId'), str('reason'));
         return null;
+      case 'member.unban':
+        await discord.unbanMember(guildId, str('userId'), str('reason'));
+        return null;
+      case 'member.setNickname':
+        await discord.setNickname(guildId, str('userId'), str('nickname'));
+        return null;
       case 'member.addRole':
         await discord.addRole(guildId, str('userId'), str('roleId'));
         return null;
       case 'member.removeRole':
         await discord.removeRole(guildId, str('userId'), str('roleId'));
         return null;
+
+      case 'channel.list':
+        return json(await discord.listChannels(guildId));
+      case 'channel.fetch':
+        return json(await discord.fetchChannel(guildId, str('channelId')));
+      case 'channel.create':
+        return json(
+          await discord.createChannel(guildId, str('name'), str('channelType') || 'text', str('parentId') || undefined),
+        );
+      case 'channel.delete':
+        await discord.deleteChannel(guildId, str('channelId'), str('reason'));
+        return null;
+      case 'channel.setTopic':
+        await discord.setChannelTopic(guildId, str('channelId'), str('topic'));
+        return null;
+      case 'channel.setSlowmode':
+        await discord.setSlowmode(guildId, str('channelId'), Number(message.seconds ?? 0));
+        return null;
+
+      case 'role.list':
+        return json(await discord.listRoles(guildId));
+      case 'role.create':
+        return json(await discord.createRole(guildId, str('name'), Number(message.colour ?? 0)));
+      case 'role.delete':
+        await discord.deleteRole(guildId, str('roleId'), str('reason'));
+        return null;
+
+      case 'guild.fetch':
+        return json(await discord.fetchGuild(guildId));
+
+      case 'discord.raw':
+        return json(
+          await discord.rawRequest(guildId, str('method') || 'GET', str('path'), message.body ?? null),
+        );
+
       default:
         throw new Error(`Unknown capability '${op}'.`);
     }
+  }
+
+  /**
+   * Outbound HTTP, checked against the hostnames the module declared and the admin approved.
+   *
+   * The allowlist comes from the stored manifest, not from anything the module sends, so a
+   * module cannot widen its own reach at runtime. Redirects are not followed: a permitted host
+   * that 302s to somewhere else would otherwise be a way around the list entirely.
+   */
+  async #brokeredFetch(
+    guildId: string,
+    moduleId: string,
+    message: Record<string, unknown>,
+  ): Promise<string> {
+    const guildModule = this.#store.getGuildModule(guildId, moduleId);
+    const manifest = guildModule ? this.#manifestFor(moduleId, guildModule.version) : null;
+    const allowed = manifest?.network ?? [];
+
+    let url: URL;
+    try {
+      url = new URL(String(message.url ?? ''));
+    } catch {
+      throw new Error('That is not a valid URL.');
+    }
+
+    if (url.protocol !== 'https:') {
+      throw new Error('Only https requests are allowed.');
+    }
+
+    if (!allowed.includes(url.hostname)) {
+      throw new Error(
+        `'${url.hostname}' is not in this module's declared hosts (${allowed.join(', ') || 'none'}).`,
+      );
+    }
+
+    const method = String(message.method ?? 'GET').toUpperCase();
+    const body = message.body === undefined || message.body === null ? undefined : String(message.body);
+
+    const response = await fetch(url, {
+      method,
+      body,
+      redirect: 'error',
+      headers: { 'user-agent': 'tessel-module', ...(body ? { 'content-type': 'application/json' } : {}) },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    // Capped so a module cannot pull an unbounded response into the bot's memory.
+    const text = (await response.text()).slice(0, 100_000);
+    return JSON.stringify({ status: response.status, ok: response.ok, body: text });
   }
 
   #quotaBytesFor(moduleId: string, guildId: string): number {

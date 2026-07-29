@@ -42,6 +42,10 @@ function intentsFromConfig(): GatewayIntentBits[] {
     intents.push(GatewayIntentBits.GuildMembers);
   }
 
+  if (env.PRIVILEGED_INTENTS.includes('voice')) {
+    intents.push(GatewayIntentBits.GuildVoiceStates);
+  }
+
   if (env.PRIVILEGED_INTENTS.includes('messageContent')) {
     intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
   }
@@ -152,6 +156,46 @@ client.on(Events.MessageCreate, (message) => {
       },
     },
   }, message.guild.name);
+});
+
+client.on(Events.MessageDelete, (message) => {
+  if (!message.inGuild()) return;
+  if (message.author?.id === client.user?.id) return;
+
+  manager.dispatchEvent(message.guild.id, 'messageDelete', {
+    message: {
+      id: message.id,
+      channelId: message.channelId,
+      content: message.content ?? '',
+      author: {
+        id: message.author?.id ?? '',
+        username: message.author?.username ?? 'unknown',
+        displayName: message.author?.username ?? 'unknown',
+        bot: message.author?.bot ?? false,
+        createdAt: message.author?.createdTimestamp ?? 0,
+      },
+    },
+  }, message.guild.name);
+});
+
+client.on(Events.VoiceStateUpdate, (before, after) => {
+  const guild = after.guild ?? before.guild;
+  const member = after.member ?? before.member;
+  if (!guild || !member) return;
+
+  manager.dispatchEvent(guild.id, 'voiceStateUpdate', {
+    voice: {
+      member: {
+        id: member.id,
+        username: member.user.username,
+        displayName: member.displayName,
+        bot: member.user.bot,
+        createdAt: member.user.createdTimestamp,
+      },
+      channelId: after.channelId,
+      previousChannelId: before.channelId,
+    },
+  }, guild.name);
 });
 
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
